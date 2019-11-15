@@ -82,6 +82,7 @@ typedef struct {
 
 /*-----------------------------------------------------------------------------*/
 void decode(char *filename);
+void moving_average(double channel_waveform[], double channel_time[N_BINS]);
 double rise_time(double channel_waveform[N_BINS], double channel_time[N_BINS]);
 double amplitude(double channel_waveform[N_BINS]);
 double charge(double channel_waveform[N_BINS], double channel_time[N_BINS]);
@@ -108,37 +109,22 @@ TTree * decode(TString filename) {
 	char rootfile[256];
 	int ndt;
 	double threshold, sumdt, sumdt2;
-	double amplitude1,amplitude2, amplitude3,amplitude4;
-	double charge1, charge2, charge3, charge4;
-	double rise_time1, rise_time2, rise_time3, rise_time4;
+	double amplitude;
+	double charge;
+	double rise_time;
 
 	TString data_filename = (filename + ".dat");
-	TFile* infile = new TFile(data_filename,"READ");
+	// TFile* infile = new TFile(data_filename,"READ");
 	TFile* outfile = new TFile(filename + ".root", "RECREATE");
 	FILE *f = fopen(data_filename.Data(), "rb");
 	printf("Opened file %s\n", data_filename.Data());
 	// define the rec tree
 	TTree *rec = new TTree("rec","rec");
-	rec->Branch("t1", time[0][0],"t1[1024]/D");
-	rec->Branch("t2", time[0][1],"t2[1024]/D");
-	rec->Branch("t3", time[0][2],"t3[1024]/D");
-	rec->Branch("t4", time[0][3],"t4[1024]/D");
-	rec->Branch("w1", waveform[0][0],"w1[1024]/D");
-	rec->Branch("w2", waveform[0][1],"w2[1024]/D");
-	rec->Branch("w3", waveform[0][2],"w3[1024]/D");
-	rec->Branch("w4", waveform[0][3],"w4[1024]/D");
-	rec->Branch("amplitude1", &amplitude1,"amplitude1/D");
-	rec->Branch("amplitude2", &amplitude2,"amplitude2/D");
-	rec->Branch("amplitude3", &amplitude3,"amplitude3/D");
-	rec->Branch("amplitude4", &amplitude4,"amplitude4/D");
-	rec->Branch("charge1", &charge1,"charge1/D");
-	rec->Branch("charge2", &charge2,"charge2/D");
-	rec->Branch("charge3", &charge3,"charge3/D");
-	rec->Branch("charge4", &charge4,"charge4/D");
-	rec->Branch("rise_time1", &rise_time1,"rise_time1/D");
-	rec->Branch("rise_time2", &rise_time2,"rise_time2/D");
-	rec->Branch("rise_time3", &rise_time3,"rise_time3/D");
-	rec->Branch("rise_time4", &rise_time4,"rise_time4/D");
+	rec->Branch("t", time[0][0],"t[1024]/D");
+	rec->Branch("w", waveform[0][0],"w[1024]/D");
+	rec->Branch("amplitude", &amplitude,"amplitude/D");
+	rec->Branch("charge", &charge,"charge/D");
+	rec->Branch("rise_time", &rise_time,"rise_time/D");
 	// create canvas
 	// TCanvas *c1 = new TCanvas();
 
@@ -267,50 +253,30 @@ TTree * decode(TString filename) {
 				for (i=0; i<1024; i++)
 					time[b][chn][i] += dt;
 			}
-
 			t1 = t2 = 0;
 
-			// find peak in channel 1 above threshold
-			t1 = rise_time1 = rise_time(waveform[b][0], time[b][0]);
-			t2 = rise_time2 = rise_time(waveform[b][1], time[b][1]);
-			rise_time3 = rise_time(waveform[b][2], time[b][2]);
-			rise_time4 = rise_time(waveform[b][3], time[b][3]);
+			// for (int c = 0; c < 4; c++) {
+			//
+			// }
+
+			moving_average(waveform[b][0], time[b][0]);
+			rise_time = rise_time(waveform[b][0], time[b][0]);
+      amplitude = amplitude(waveform[b][0]);
+			charge = charge(waveform[b][0], time[b][0]);
 
 			// calculate distance of peaks with statistics
-			if (t1 > 0 && t2 > 0) {
-				ndt++;
-				dt = t2 - t1;
-				sumdt += dt;
-				sumdt2 += dt*dt;
-			}
+			// if (t1 > 0 && t2 > 0) {
+			// 	ndt++;
+			// 	dt = t2 - t1;
+			// 	sumdt += dt;
+			// 	sumdt2 += dt*dt;
+			// }
 
-      amplitude1 = amplitude(waveform[b][0]);
-      amplitude2 = amplitude(waveform[b][1]);
-      amplitude3 = amplitude(waveform[b][2]);
-      amplitude4 = amplitude(waveform[b][3]);
-			charge1 = charge(waveform[b][0], time[b][0]);
-			charge2 = charge(waveform[b][1], time[b][1]);
-			charge3 = charge(waveform[b][2], time[b][2]);
-			charge4 = charge(waveform[b][3], time[b][3]);
+
+
 
 			// fill root tree
 			rec->Fill();
-
-			//Uncomment the following to see couple waveforms of voltage vs time
-
-	    // // fill graph
-	    // for (i=0 ; i<1024 ; i++)
-	    //    g->SetPoint(i, time[b][2][i], waveform[b][2][i]);
-			//
-	    // // draw graph and wait for user click
-	    // g->SetTitle("Pulses for Particle Detector");
-	    // g->GetXaxis()->SetTitle("Time (ns)");
-	    // g->GetYaxis()->SetTitle("Voltage (V)");
-	    // g->Draw("ACP");
-	    // c1->Update();
-	    // gPad->WaitPrimitive();
-
-
 		} //loop over different boards
 
 	} //loop over events
@@ -321,6 +287,18 @@ TTree * decode(TString filename) {
 	rec->Write();
 	outfile->Close();
 	return rec;
+}
+
+void moving_average(double channel_waveform[], double channel_time[N_BINS]) {
+	int period = 50;
+	for (int i=0; i<N_BINS - (period + 2); i++){
+		for ( int n = 1; n<period; n++ ){
+			channel_waveform[i] += channel_waveform[i + n];
+		}
+		channel_waveform[i] = channel_waveform[i] / period;
+
+	}
+	//return channel_waveform;
 }
 
 double rise_time(double channel_waveform[N_BINS], double channel_time[N_BINS]) {
@@ -350,7 +328,6 @@ double amplitude(double channel_waveform[N_BINS]){
 	for (i=0; i<N_BINS - 2; i++) {
 		if (channel_waveform[i]>max) {
 			max=channel_waveform[i];
-			printf("%f\n", channel_waveform[i]);
 		}
 	}
 	return max;
