@@ -1,6 +1,7 @@
 #include "drsosc_read.h"
 #include <iostream>
 
+
 TTree * drsosc_read(TString filename) {
 
 	FHEADER fh;
@@ -15,7 +16,7 @@ TTree * drsosc_read(TString filename) {
 	unsigned int scaler;
 	unsigned short voltage[N_BINS];
 	TTree * event_data = new TTree("event_data", "event_data");
-	TMap * local_event_data = new TMap();
+	std::map<BoardId, EventData> local_event_data;
 	float bin_width[MAX_N_BOARDS][N_CHANNELS][N_BINS];
 	int i, j, b, chn, n, chn_index, n_boards;
 
@@ -66,8 +67,8 @@ TTree * drsosc_read(TString filename) {
 			printf("Found timing calibration for channel #%d\n", i+1);
 			EventData * single_event = new EventData();
 			BoardId board_id(b, chn);
-			local_event_data->Add(&board_id, single_event);
-			event_data->Branch(board_id.str(), ((EventData *) local_event_data->GetValue(&board_id)), "time[1024]/D:waveform[1024]/D");
+			local_event_data.insert(std::pair<BoardId, EventData>(board_id, *single_event));
+			event_data->Branch(board_id.str(), &(local_event_data[board_id]), "time[1024]/D:waveform[1024]/D");
 			fread(&bin_width[b][i][0], sizeof(float), 1024, f);
 			// fix for 2048 bin mode: double channel
 			if (bin_width[b][i][1023] > 10 || bin_width[b][i][1023] < 0.01) {
@@ -116,7 +117,7 @@ TTree * drsosc_read(TString filename) {
 			// reach channel data
 			for (chn=0; chn<4; chn++) {
 				BoardId board_id(b, chn);
-				EventData * current_event =  (EventData *) local_event_data->GetValue(&board_id);
+				EventData * current_event = &(local_event_data[board_id]);
 				if (!current_event){
 					break;
 				}
@@ -143,17 +144,14 @@ TTree * drsosc_read(TString filename) {
 			}
 
 			BoardId board_id(b, 0);
-			EventData * ref_event =  (EventData *) local_event_data->GetValue(&board_id);
+			EventData * ref_event =  &(local_event_data[board_id]);
 			// align cell #0 of all channels
 			double t1 = ref_event->time[(1024-tch.trigger_cell) % 1024];
 			for (chn=1; chn<N_CHANNELS; chn++) {
 				BoardId curr_board_id(b, chn);
-				EventData * current_event = (EventData *) local_event_data->GetValue(&curr_board_id);
+				EventData * current_event = &(local_event_data[curr_board_id]);
 				if(!current_event){
 					break;
-				}
-				for (int i = 0; i < 1024; i++){
-					printf("Time: %f", current_event->time[i]);
 				}
 				double t2 = current_event->time[(1024-tch.trigger_cell) % 1024];
 				double dt = t1 - t2;

@@ -1,6 +1,11 @@
 #ifndef APP_H
 #define APP_H
 
+#include <utility>
+#include <iostream>
+#include <fstream>
+#include <cmath>
+
 #include <TH1D.h>
 #include <TGraph.h>
 #include <TTree.h>
@@ -17,13 +22,13 @@
 #define N_CHANNELS 4
 #define MAX_CHANNELS MAX_N_BOARDS * N_CHANNELS
 #define N_BINS 1024
-#define PEAK_THRESHOLD 0.3
+double PEAK_THRESHOLD = -1.0;
 
 
-class EventData : public TObject {
-	public:
-		double time[N_BINS];
-		double waveform[N_BINS];
+class EventData{
+public:
+	double time[N_BINS];
+	double waveform[N_BINS];
 };
 
 // typedef struct {
@@ -32,13 +37,17 @@ class EventData : public TObject {
 // } EventData;
 
 
-class EventStats : public TObject {
+class EventStats{
 public:
-double amplitude, charge, rise_time, difference;
+	double amplitude;
+	double peak_time;
+	double charge;
+	double rise_time;
+	double difference;
 };
 
 
-class BoardId : public TObject{
+class BoardId{
 public:
 	int channel;
 	int board;
@@ -46,9 +55,16 @@ public:
 		this->channel = channel;
 		this->board = board;
 	}
+
 	virtual ULong_t Hash() const{
 		return channel + board * N_CHANNELS;
 	}
+
+	bool operator <(const BoardId& rhs) const
+    {
+
+        return Hash() < rhs.Hash();
+    }
 
 	TString str(TString type){
 		TString s; s.Form("%lu" + type,this->Hash());

@@ -1,23 +1,27 @@
 #include "process_data.h"
 
 TTree * process_data(TTree * event_data){
+  printf("%f\n", PEAK_THRESHOLD);
   TObjArray * branches = event_data->GetListOfBranches();
 
   int n_branches = branches->GetEntries();
   TTree * event_stats = new TTree("event_stats", "event_stats");
-  TMap * local_event_data = new TMap();
-  TMap * local_event_stats = new TMap();
+  std::map<TString, EventData> local_event_data;
+  std::map<TString, EventStats> local_event_stats;
 
   for (int i = 0; i < n_branches; i++) {
     TBranch * branch = (TBranch *) branches->At(i);
-    TObjString * branch_name = new TObjString(branch->GetName());
+    TString branch_name(branch->GetName());
 
-    local_event_stats->Add(branch_name, new EventStats());
+    local_event_stats.insert(std::pair<TString, EventStats>(branch_name, *(new EventStats())));
 
-    event_stats->Branch(branch_name->GetString(), (EventStats *) local_event_stats->GetValue(branch_name), "amplitude/D:charge/D:rise_time/D:difference/D");
+    event_stats->Branch(
+      branch_name.Data(), &local_event_stats[branch_name],
+      "amplitude/D:peak_time:charge:rise_time:difference"
+    );
 
-    local_event_data->Add(branch_name, new EventData());
-    branch->SetAddress((EventData *) local_event_data->GetValue(branch_name));
+    local_event_data.insert(std::pair<TString, EventData>(branch_name, *(new EventData())));
+    branch->SetAddress(&local_event_data[branch_name]);
   }
 
 
@@ -25,40 +29,44 @@ TTree * process_data(TTree * event_data){
   for (int j = 0; j < n_leaves; j++){
     for (int i = 0; i < n_branches; i++) {
       event_data->GetEntry(j);
-      TObjString * branch_name = new TObjString(branches->At(i)->GetName());
-      EventData * current_event = (EventData *) local_event_data->GetValue(branch_name);
-      EventStats * current_stats = (EventStats *) local_event_stats->GetValue(branch_name);
+      TString branch_name(branches->At(i)->GetName());
+      EventData * current_event = &local_event_data[branch_name];
+      EventStats * current_stats = &local_event_stats[branch_name];
 
       /* Data Processing */
-      moving_average(current_event->time,current_event->waveform);
+      // baseline(current_event->waveform);
+      moving_average(current_event->time, current_event->waveform);
 
       /* Statistic Gathering */
       current_stats->rise_time = rise_time(current_event->waveform, current_event->time);
+      current_stats->peak_time = peak_time(current_event->waveform, current_event->time);
       current_stats->amplitude = amplitude(current_event->waveform);
       current_stats->charge = charge(current_event->waveform, current_event->time);
-      current_stats->difference = ((EventStats *) local_event_stats->GetValue(BoardId(0,0).str()))->rise_time - current_stats->rise_time;
-      // printf("%f - %f\n", ((EventStats *) local_event_stats->GetValue(BoardId(0,0).str()))->rise_time, current_stats->rise_time);
+      current_stats->difference = (local_event_stats[*(BoardId(0,0).str())]).peak_time - current_stats->peak_time;
+      current_stats->difference = (local_event_stats[*(BoardId(0,0).str())]).rise_time - current_stats->rise_time;
     }
+
     event_stats->Fill();
   };
 
   EventStats event;
-  int n_events = event_stats->GetEntries();
   event_stats->GetBranch((new BoardId(0,1))->str())->SetAddress(&event);
-  double * value = 0;
-  value = &(event.difference);
-
-  for (int i = 0; i < n_events; i++) {
-    event_stats->GetEntry(i);
-  }
-  printf("Diff: %f\n", *value);
+  double * diff =  &event.difference;
+  double * rise =  &event.rise_time;
+  event_stats->GetEntry(120);
+  printf("Diff: %f; Rise: %f;;;%f\n", *diff, *rise, PEAK_THRESHOLD);
 
   return event_stats;
 }
 
+// void baseline(double channel_waveform[]){
+//   double avg = 0;
+//   for (int i = 0; i < 20; i++) {
+//     avg += channel_waveform[i];
+//   }
+// }
 
-
-void moving_average(double channel_waveform[], double channel_time[N_BINS]) {
+void moving_average(double channel_time[], double channel_waveform[N_BINS]) {
 	int period = 50;
 	for (int i=0; i<N_BINS - (period + 2); i++){
 		for ( int n = 1; n<period; n++ ){
@@ -69,24 +77,24 @@ void moving_average(double channel_waveform[], double channel_time[N_BINS]) {
 	}
 	//return channel_waveform;
 }
-//
-// double rise_time(double channel_waveform[N_BINS], double channel_time[N_BINS]) {
-//   int i;
-// 	for (i=0; i<N_BINS - 2; i++){
-// 		if ((channel_waveform[i] < PEAK_THRESHOLD) && channel_waveform[i+1] >= PEAK_THRESHOLD) {
-// 			return (
-// 				(PEAK_THRESHOLD-channel_waveform[i])
-// 				/ (channel_waveform[i+1]-channel_waveform[i])
-// 				* (channel_time[i+1]-channel_time[i])
-// 				) + channel_time[i];
-// 		}
-//   }
-// 	return 0;
-// }
+
+double rise_time(double channel_waveform[N_BINS], double channel_time[N_BINS]) {
+  int i;
+	for (i=0; i<N_BINS - 2; i++){
+		if ((channel_waveform[i] < PEAK_THRESHOLD) && channel_waveform[i+1] >= PEAK_THRESHOLD) {
+			return (
+				(PEAK_THRESHOLD-channel_waveform[i])
+				/ (channel_waveform[i+1]-channel_waveform[i])
+				* (channel_time[i+1]-channel_time[i])
+				) + channel_time[i];
+		}
+  }
+	return std::numeric_limits<double>::quiet_NaN();
+}
 
 
 // Assumes curve has been smoothened.
-double rise_time(double wave[N_BINS], double time[N_BINS]) {
+double peak_time(double wave[N_BINS], double time[N_BINS]) {
   int i;
   double max_dertime = 0;
   double max_derivative = 0;

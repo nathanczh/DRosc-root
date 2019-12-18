@@ -12,7 +12,6 @@
 #include "plot.C"
 
 
-void write_to_file(TString * name, TTree * tree);
 int run (char fn, TString filename, int channel_number, TString plot_attr);
 int run (char function, TString filename);
 int run(TString filename);

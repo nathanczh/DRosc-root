@@ -1,35 +1,35 @@
 #include "run.h"
 
 TString last_filename;
-int run (char fn, TString filename, int channel_number, TString plot_attr) {
+int run (char fn, TString name, int channel_number, TString plot_attr) {
+  TString filename = name.Copy().Append(".root");
+	// TFile* file = new TFile(filename, "UPDATE");
   TTree * results;
-  TFile *file;
-  // char const * str = "Run_Light_29_5V_5mV_10mV_4_2mm_Fibers";
-  last_filename = filename;
 
-  if ( fn == 'd' || fn == 'f' || gSystem->AccessPathName(filename + ".root") ){
-    results = drsosc_read(filename);
-  } else {
-    file = new TFile(filename + ".root", "READ");
-    results = (TTree*) file->Get("event_data");
+  if ( 1 || fn == 'd' || fn == 'f' || gSystem->AccessPathName(filename) ){
+    results = drsosc_read(name);
+    // results->Write();
   }
+  // results = (TTree*) file->Get("event_data");
+  // if (!results){
+  //   printf("NULL POINTER READING FROM FILE");
+  //   return 0;
+  // }
 
   if ( fn == 'd') {
     return 1;
   }
 
-  // write_to_file(&filename, results);
-  TTree * stats = process_data(results);
-  plot(stats, channel_number, plot_attr);
-
+  // for( double j = 0.014; j < 10; j+= .001 ) {
+    // PEAK_THRESHOLD = .005;
+    PEAK_THRESHOLD = .01;
+    // PEAK_THRESHOLD = j;
+    TTree * stats = process_data(results);
+    plot(results, stats, channel_number, plot_attr);
+  // }
   return 1;
 }
 
-void write_to_file(TString * name, TTree * tree) {
-	TFile* outfile = new TFile(name->Append(".root"), "RECREATE");
-  tree->Write();
-  outfile->Close();
-}
 
 int run (char function, TString filename){
   return run(function, filename, 1, "amplitude");
